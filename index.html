@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>XYZ Measure by BJM</title>
+<title>Meranie XYZ by BJM</title>
 <style>
   /* ============================================================
      APPEARANCE SETTINGS
@@ -37,8 +37,8 @@
   button.primary.on:hover { background: #f59e0b; }
 
   button.tgl { display: block; width: 100%; text-align: left; margin: 0 0 6px 0; }
-  button.tgl::after { content: "OFF"; float: right; font-size: 10px; opacity: .75; padding-top: 1px; }
-  button.tgl.on::after { content: "ON"; font-weight: 700; opacity: 1; }
+  button.tgl::after { content: "VYP"; float: right; font-size: 10px; opacity: .75; padding-top: 1px; }
+  button.tgl.on::after { content: "ZAP"; font-weight: 700; opacity: 1; }
 
   .lock-row { display: flex; gap: 6px; }
   .lock-row button.tgl { margin: 0; text-align: center; flex: 1; }
@@ -72,71 +72,71 @@
 </style>
 </head>
 <body>
-  <h1>📐 XYZ Measure</h1>
-  <div id="status" class="status">Connecting to 3D Viewer…</div>
+  <h1>📐 Meranie XYZ</h1>
+  <div id="status" class="status">Pripájam sa k 3D Vieweru…</div>
 
   <div>
-    <button id="btnMeasure" class="primary" disabled>▶ Measure</button>
-    <button id="btnClear" disabled>🗑 Delete all</button>
-    <button id="btnCopy" disabled>📋 Copy table</button>
+    <button id="btnMeasure" class="primary" disabled>▶ Merať</button>
+    <button id="btnClear" disabled>🗑 Zmazať všetko</button>
+    <button id="btnCopy" disabled>📋 Kopírovať tabuľku</button>
   </div>
 
-  <h2>Snap to</h2>
+  <h2>Prichytávanie</h2>
   <div class="snap-row">
-    <button id="snapPoints" class="primary tgl-ico" aria-pressed="false" title="Points">
+    <button id="snapPoints" class="primary tgl-ico" aria-pressed="false" title="Body">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round">
         <path d="M12 2 21 7v10l-9 5-9-5V7z M12 12 3 7 M12 12l9-5 M12 12v10" stroke-width="1.3" opacity=".6"/>
         <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
       </svg>
     </button>
-    <span data-for="snapPoints">Points</span>
+    <span data-for="snapPoints">Body</span>
   </div>
   <div class="snap-row">
-    <button id="snapLines" class="primary tgl-ico" aria-pressed="false" title="Lines">
+    <button id="snapLines" class="primary tgl-ico" aria-pressed="false" title="Hrany">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round">
         <path d="M12 2 21 7v10l-9 5-9-5V7z M12 12 3 7 M12 12l9-5" stroke-width="1.3" opacity=".6"/>
         <path d="M12 12v10" stroke-width="3.2"/>
       </svg>
     </button>
-    <span data-for="snapLines">Lines</span>
+    <span data-for="snapLines">Hrany</span>
   </div>
   <div class="snap-row">
-    <button id="snapFaces" class="primary tgl-ico" aria-pressed="false" title="Faces">
+    <button id="snapFaces" class="primary tgl-ico" aria-pressed="false" title="Plochy">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linejoin="round">
         <path d="M12 2 21 7v10l-9 5-9-5V7z M12 12 3 7 M12 12l9-5 M12 12v10" stroke-width="1.3" opacity=".6"/>
         <path d="M3 7l9 5v10l-9-5z" fill="currentColor" stroke="none"/>
       </svg>
     </button>
-    <span data-for="snapFaces">Faces</span>
+    <span data-for="snapFaces">Plochy</span>
   </div>
 
-  <h2>Options</h2>
-  <button id="tglContinuous" class="primary tgl on" aria-pressed="true">Continuous measuring</button>
-  <button id="tglComponents" class="primary tgl on" aria-pressed="true">Draw X Y Z components</button>
-  <button id="tglLabels" class="primary tgl" aria-pressed="false">Permanent value labels</button>
-  <button id="tglMeters" class="primary tgl" aria-pressed="false">Units in meters (default mm)</button>
+  <h2>Možnosti</h2>
+  <button id="tglContinuous" class="primary tgl on" aria-pressed="true">Priebežné meranie</button>
+  <button id="tglComponents" class="primary tgl on" aria-pressed="true">Kresliť zložky X Y Z</button>
+  <button id="tglLabels" class="primary tgl" aria-pressed="false">Trvalé popisy hodnôt</button>
+  <button id="tglMeters" class="primary tgl" aria-pressed="false">Jednotky v metroch (inak mm)</button>
 
-  <h2>Local axes</h2>
+  <h2>Lokálne osi</h2>
   <div class="axis-btns">
-    <button id="btnAxisDefine" class="primary" disabled title="Pick the origin, then a second point along the wall – that direction becomes X'">📏 Define axes (2 points)</button>
-    <button id="btnAxisRot" disabled title="Rotate the local axes by +90° (swap which wall is X')">↻ 90°</button>
-    <button id="btnAxisClear" disabled title="Delete the local axes completely and go back to global X / Y">🗑 Axes</button>
+    <button id="btnAxisDefine" class="primary" disabled title="Klikni počiatok, potom druhý bod pozdĺž steny – tento smer bude os X′">📏 Zadať osi (2 body)</button>
+    <button id="btnAxisRot" disabled title="Otočiť lokálne osi o +90° (prehodí, ktorá stena je X′)">↻ 90°</button>
+    <button id="btnAxisClear" disabled title="Úplne zmazať lokálne osi a vrátiť sa ku globálnym X / Y">🗑 Osi</button>
   </div>
   <div class="angle-row">
-    <label for="axisAngle">X' angle</label>
-    <input id="axisAngle" type="number" step="0.0001" value="0" disabled title="Counter-clockwise from global +X, in degrees">
+    <label for="axisAngle">Uhol X′</label>
+    <input id="axisAngle" type="number" step="0.0001" value="0" disabled title="Proti smeru hodinových ručičiek od globálnej +X, v stupňoch">
     <span>°</span>
     <span id="axisGon" class="muted"></span>
   </div>
-  <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Measure in local axes X' Y'</button>
-  <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Show axes in model</button>
-  <div id="axisInfo" class="axis-info">No local axes – measuring in global X / Y.</div>
+  <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Merať v lokálnych osiach X′ Y′</button>
+  <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Zobraziť osi v modeli</button>
+  <div id="axisInfo" class="axis-info">Bez lokálnych osí – meria sa v globálnych X / Y.</div>
 
-  <h2>Coordinate lock</h2>
+  <h2>Zámok súradníc</h2>
   <div class="lock-row">
-    <button id="lockX" class="primary tgl" aria-pressed="false" title="Second point keeps the X of the first point">Lock X</button>
-    <button id="lockY" class="primary tgl" aria-pressed="false" title="Second point keeps the Y of the first point">Lock Y</button>
-    <button id="lockZ" class="primary tgl" aria-pressed="false" title="Second point keeps the Z of the first point">Lock Z</button>
+    <button id="lockX" class="primary tgl" aria-pressed="false" title="Druhý bod prevezme X prvého bodu">Zámok X</button>
+    <button id="lockY" class="primary tgl" aria-pressed="false" title="Druhý bod prevezme Y prvého bodu">Zámok Y</button>
+    <button id="lockZ" class="primary tgl" aria-pressed="false" title="Druhý bod prevezme Z prvého bodu">Zámok Z</button>
   </div>
 
   <div id="tableWrap">
@@ -244,14 +244,14 @@ async function connect() {
     await rememberPointMarkups();
     await loadAxis();
 
-    setStatus("Connected. Click Measure and pick 2 points in the model.");
+    setStatus("Pripojené. Klikni Merať a vyber 2 body v modeli.");
     $("btnMeasure").disabled = false;
     $("btnClear").disabled = false;
     $("btnCopy").disabled = false;
     $("btnAxisDefine").disabled = false;
     $("axisAngle").disabled = false;
   } catch (e) {
-    setStatus("Could not connect to the 3D Viewer: " + e.message, "error");
+    setStatus("Nepodarilo sa pripojiť k 3D Vieweru: " + e.message, "error");
   }
 }
 
@@ -277,14 +277,14 @@ function selectedSnaps() {
 async function onSnapChanged() {
   if (axisPicking) {
     axisFirst = null;
-    await activateTool("Define local axes", "Pick the origin, then a point along X'");
-    setStatus("Snap changed – pick the axis ORIGIN.", "active");
+    await activateTool("Zadanie lokálnych osí", "Klikni počiatok, potom bod pozdĺž X′");
+    setStatus("Prichytávanie zmenené – vyber POČIATOK osí.", "active");
     return;
   }
   if (!measuring) return;
   firstPoint = null;                    // re-activation discards an unfinished pick
   await activateTool();
-  setStatus("Snap changed – pick the FIRST point.", "active");
+  setStatus("Prichytávanie zmenené – vyber PRVÝ bod.", "active");
 }
 bindToggle("snapPoints", onSnapChanged);
 bindToggle("snapLines",  onSnapChanged);
@@ -304,7 +304,7 @@ bindToggle("lockZ");
 async function activateTool(title, text) {
   const options = {
     snapTypes: selectedSnaps(),
-    instruction: { title: title || "XYZ Measure", text: text || "Pick 2 points to measure" }
+    instruction: { title: title || "Meranie XYZ", text: text || "Vyber 2 body na meranie" }
   };
   try {
     await api.viewer.activateTool(SETTINGS.TOOL_NAME, options);
@@ -312,7 +312,7 @@ async function activateTool(title, text) {
   } catch (e) {
     try { await api.viewer.activateTool(SETTINGS.TOOL_NAME); return true; }
     catch (e2) {
-      setStatus("Could not activate the 'picking' tool: " + e2.message, "error");
+      setStatus("Nepodarilo sa zapnúť nástroj 'picking': " + e2.message, "error");
       return false;
     }
   }
@@ -330,8 +330,8 @@ async function startMeasuring() {
   measuring = true;
   firstPoint = null;
   setToggle("btnMeasure", true);
-  $("btnMeasure").textContent = "⏹ Stop measuring";
-  setStatus("Measuring" + (localActive() ? " in local axes" : "") + " – pick the FIRST point in the model.", "active");
+  $("btnMeasure").textContent = "⏹ Ukončiť meranie";
+  setStatus("Meranie" + (localActive() ? " v lokálnych osiach" : "") + " – vyber PRVÝ bod v modeli.", "active");
 }
 
 async function stopMeasuring(text) {
@@ -339,10 +339,10 @@ async function stopMeasuring(text) {
   measuring = false;
   firstPoint = null;
   setToggle("btnMeasure", false);
-  $("btnMeasure").textContent = "▶ Measure";
+  $("btnMeasure").textContent = "▶ Merať";
   await resetTool();
   await removeNewPointLabels();
-  setStatus(text || "Measuring stopped.");
+  setStatus(text || "Meranie ukončené.");
 }
 
 $("btnMeasure").onclick = () => measuring ? stopMeasuring() : startMeasuring();
@@ -404,7 +404,7 @@ function updateAxisUI() {
   const local = localActive();
   const deg = thetaDeg();
   if (document.activeElement !== $("axisAngle")) $("axisAngle").value = deg.toFixed(4);
-  $("axisGon").textContent = AXIS.defined ? "(" + (deg * 400 / 360).toFixed(4) + " gon)" : "";
+  $("axisGon").textContent = AXIS.defined ? "(" + (deg * 400 / 360).toFixed(4) + " grad)" : "";
   $("btnAxisRot").disabled = !AXIS.defined || !api;
   $("btnAxisClear").disabled = (!AXIS.defined && !axisPicking) || !api;
   $("tglLocal").disabled = !AXIS.defined;
@@ -416,19 +416,19 @@ function updateAxisUI() {
   $("tglShowAxes").disabled = !canShow;
 
   const p = local ? "′" : "";
-  $("lockX").textContent = "Lock X" + p;
-  $("lockY").textContent = "Lock Y" + p;
-  $("lockX").title = "Second point keeps the X" + p + " of the first point";
-  $("lockY").title = "Second point keeps the Y" + p + " of the first point";
+  $("lockX").textContent = "Zámok X" + p;
+  $("lockY").textContent = "Zámok Y" + p;
+  $("lockX").title = "Druhý bod prevezme X" + p + " prvého bodu";
+  $("lockY").title = "Druhý bod prevezme Y" + p + " prvého bodu";
   $("thX").textContent = "|ΔX" + p + "|";
   $("thY").textContent = "|ΔY" + p + "|";
   $("th2D").textContent = local ? "2D (X′Y′)" : "2D (XY)";
 
   let info;
-  if (!AXIS.defined) info = "No local axes – measuring in global X / Y.";
-  else if (!local) info = "Local axes defined (X′ at " + deg.toFixed(4) + "°) but switched off – measuring in global X / Y.";
-  else info = "Measuring along X′ / Y′ (X′ at " + deg.toFixed(4) + "° from global +X, counter-clockwise)." +
-              (AXIS.origin ? "" : " No origin set – axes are not drawn.");
+  if (!AXIS.defined) info = "Bez lokálnych osí – meria sa v globálnych X / Y.";
+  else if (!local) info = "Lokálne osi sú zadané (X′ pod uhlom " + deg.toFixed(4) + "°), ale vypnuté – meria sa v globálnych X / Y.";
+  else info = "Meria sa pozdĺž X′ / Y′ (X′ pod uhlom " + deg.toFixed(4) + "° od globálnej +X, proti smeru hodinových ručičiek)." +
+              (AXIS.origin ? "" : " Počiatok nie je zadaný – osi sa nekreslia.");
   $("axisInfo").textContent = info;
 }
 
@@ -451,7 +451,7 @@ async function drawAxes() {
     ]);
     (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
   } catch (e) {
-    setStatus("Could not draw the axes: " + (e && e.message ? e.message : String(e)), "error");
+    setStatus("Osi sa nepodarilo nakresliť: " + (e && e.message ? e.message : String(e)), "error");
     return;
   }
   try {
@@ -477,28 +477,28 @@ async function startAxisPicking() {
   await rememberPointMarkups();
   axisFirst = null;
   axisPicking = true;
-  if (!await activateTool("Define local axes", "Pick the origin, then a point along X'")) {
+  if (!await activateTool("Zadanie lokálnych osí", "Klikni počiatok, potom bod pozdĺž X′")) {
     axisPicking = false;
     return;
   }
   setToggle("btnAxisDefine", true);
-  $("btnAxisDefine").textContent = "✕ Cancel";
+  $("btnAxisDefine").textContent = "✕ Zrušiť";
   updateAxisUI();
-  setStatus("Axes – pick the ORIGIN (e.g. a building corner).", "active");
+  setStatus("Osi – vyber POČIATOK (napr. roh budovy).", "active");
 }
 
 async function finishAxisPicking() {
   axisPicking = false;
   axisFirst = null;
   setToggle("btnAxisDefine", false);
-  $("btnAxisDefine").textContent = "📏 Define axes (2 points)";
+  $("btnAxisDefine").textContent = "📏 Zadať osi (2 body)";
   updateAxisUI();
   await resetTool();
   await removeNewPointLabels();
 }
 
 $("btnAxisDefine").onclick = async () => {
-  if (axisPicking) { await finishAxisPicking(); setStatus("Axis definition cancelled."); }
+  if (axisPicking) { await finishAxisPicking(); setStatus("Zadávanie osí zrušené."); }
   else await startAxisPicking();
 };
 
@@ -507,13 +507,13 @@ async function handleAxisPick(args) {
   if (!p) return;
   if (!axisFirst) {
     axisFirst = p;
-    setStatus("Origin: " + fmtPoint(p) + " – pick a point ALONG the X′ direction (along the wall).", "active");
+    setStatus("Počiatok: " + fmtPoint(p) + " – vyber bod V SMERE osi X′ (pozdĺž steny).", "active");
     return;
   }
   const dx = p.x - axisFirst.x, dy = p.y - axisFirst.y;
   const h = Math.hypot(dx, dy);
   if (h < SETTINGS.MIN_AXIS_PICK_MM) {
-    setStatus("The second point is directly above/below the origin – pick a point further along the wall.", "error");
+    setStatus("Druhý bod je priamo nad/pod počiatkom – vyber bod ďalej pozdĺž steny.", "error");
     return;                              // the origin stays selected
   }
   AXIS.defined = true;
@@ -522,12 +522,12 @@ async function handleAxisPick(args) {
   AXIS.len = Math.max(h, SETTINGS.MIN_AXIS_DRAW_MM);
   setToggle("tglLocal", true);
   await finishAxisPicking();
-  await axisChanged("Local axes set: X′ at " + thetaDeg().toFixed(4) + "°. Measurements now use X′ / Y′.");
+  await axisChanged("Lokálne osi zadané: X′ pod uhlom " + thetaDeg().toFixed(4) + "°. Merania teraz idú v X′ / Y′.");
 }
 
 $("btnAxisRot").onclick = () => {
   AXIS.theta = normAngle(AXIS.theta + Math.PI / 2);
-  axisChanged("Axes rotated by 90°: X′ at " + thetaDeg().toFixed(4) + "°.");
+  axisChanged("Osi otočené o 90°: X′ pod uhlom " + thetaDeg().toFixed(4) + "°.");
 };
 
 // wipe the local axes completely: markups in the model, stored state, UI
@@ -543,8 +543,8 @@ $("btnAxisClear").onclick = async () => {
   updateAxisUI();
   renderTable();
   await drawAxes();                     // removes the drawn axes, draws nothing new
-  setStatus("Local axes deleted – measuring in global X / Y." +
-            (measuring ? " Pick the FIRST point." : " Click Define axes to set new ones."),
+  setStatus("Lokálne osi zmazané – meria sa v globálnych X / Y." +
+            (measuring ? " Vyber PRVÝ bod." : " Nové osi zadáš tlačidlom Zadať osi."),
             measuring ? "active" : "");
 };
 
@@ -554,7 +554,7 @@ $("axisAngle").addEventListener("change", () => {
   AXIS.defined = true;
   AXIS.theta = normAngle(v * Math.PI / 180);
   setToggle("tglLocal", true);
-  axisChanged("X′ angle set to " + thetaDeg().toFixed(4) + "°.");
+  axisChanged("Uhol X′ nastavený na " + thetaDeg().toFixed(4) + "°.");
 });
 
 bindToggle("tglLocal", () => axisChanged());
@@ -600,10 +600,10 @@ async function handlePick(args) {
   if (!firstPoint) {
     firstPoint = picked;
     const locks = ["X", "Y", "Z"].filter(a => isOn("lock" + a)).map(a => a === "Z" ? a : a + prime);
-    setStatus("Point 1: " + fmtPoint(picked) +
-              (local && AXIS.origin ? " local " + fmtLocalPoint(picked) : "") +
-              " – pick the SECOND point." +
-              (locks.length ? " Locked: " + locks.join(", ") + "." : ""), "active");
+    setStatus("Bod 1: " + fmtPoint(picked) +
+              (local && AXIS.origin ? " lokálne " + fmtLocalPoint(picked) : "") +
+              " – vyber DRUHÝ bod." +
+              (locks.length ? " Zamknuté: " + locks.join(", ") + "." : ""), "active");
     return;
   }
 
@@ -626,7 +626,7 @@ async function handlePick(args) {
   const d2 = Math.sqrt(du*du + dv*dv);
 
   if (d3 < 0.01) {
-    setStatus("Nothing to measure – the points are identical (all three axes locked?). Pick the second point again.", "error");
+    setStatus("Nie je čo merať – body sú totožné (sú zamknuté všetky tri osi?). Vyber druhý bod znova.", "error");
     return;                              // the first point stays selected
   }
 
@@ -639,9 +639,9 @@ async function handlePick(args) {
   let drawNote = "";
   try {
     record.markupIds = await drawMarkups(A, B, du, dv, dz, d3, R, prime);
-    if (!record.markupIds.length) drawNote = " WARNING: the Viewer returned no markups (nothing drawn).";
+    if (!record.markupIds.length) drawNote = " POZOR: Viewer nevrátil žiadne markupy (nič sa nenakreslilo).";
   } catch (e) {
-    drawNote = " DRAWING FAILED: " + (e && e.message ? e.message : String(e));
+    drawNote = " KRESLENIE ZLYHALO: " + (e && e.message ? e.message : String(e));
     console.log("Markup error:", e);
   }
 
@@ -652,9 +652,9 @@ async function handlePick(args) {
 
   const cls = drawNote ? "error" : "active";
   if (isOn("tglContinuous")) {
-    setStatus("Measurement #" + measurementCounter + " done." + drawNote + " Pick the FIRST point of the next one.", cls);
+    setStatus("Meranie č. " + measurementCounter + " hotové." + drawNote + " Vyber PRVÝ bod ďalšieho.", cls);
   } else {
-    await stopMeasuring("Measurement #" + measurementCounter + " done." + drawNote);
+    await stopMeasuring("Meranie č. " + measurementCounter + " hotové." + drawNote);
     if (drawNote) statusEl.className = "status error";
   }
 }
@@ -748,7 +748,7 @@ function renderTable() {
   for (const m of measurements) {
     const tr = document.createElement("tr");
     const tag = m.local
-      ? "<sup title='Local axes, X′ at " + m.thetaDeg.toFixed(4) + "°'>L</sup>"
+      ? "<sup title='Lokálne osi, X′ pod uhlom " + m.thetaDeg.toFixed(4) + "°'>L</sup>"
       : "";
     tr.innerHTML =
       "<td>" + m.num + tag + "</td>" +
@@ -757,7 +757,7 @@ function renderTable() {
       "<td class='cz'>" + fmt(Math.abs(m.dz)) + "</td>" +
       "<td class='c3'>" + fmt(m.d3) + "</td>" +
       "<td>" + fmt(m.d2) + "</td>" +
-      "<td class='row-action'><button title='Delete measurement'>✕</button></td>";
+      "<td class='row-action'><button title='Zmazať meranie'>✕</button></td>";
     tr.querySelector("button").onclick = () => deleteMeasurement(m);
     tbody.appendChild(tr);
   }
@@ -777,20 +777,20 @@ $("btnClear").onclick = async () => {
   await removeNewPointLabels();
   measurements = [];
   renderTable();
-  setStatus("All measurements deleted.");
+  setStatus("Všetky merania zmazané.");
 };
 
 $("btnCopy").onclick = () => {
   const u = isOn("tglMeters") ? "m" : "mm";
-  let text = "#\tAxes\t|dX| [" + u + "]\t|dY| [" + u + "]\t|dZ| [" + u + "]\t3D [" + u + "]\t2D [" + u + "]\n";
+  let text = "#\tOsi\t|dX| [" + u + "]\t|dY| [" + u + "]\t|dZ| [" + u + "]\t3D [" + u + "]\t2D [" + u + "]\n";
   for (const m of measurements) {
-    const axes = m.local ? "local " + m.thetaDeg.toFixed(4) + "°" : "global";
+    const axes = m.local ? "lokálne " + m.thetaDeg.toFixed(4) + "°" : "globálne";
     text += [m.num, axes, fmt(Math.abs(m.du)), fmt(Math.abs(m.dv)),
              fmt(Math.abs(m.dz)), fmt(m.d3), fmt(m.d2)].join("\t") + "\n";
   }
   navigator.clipboard.writeText(text)
-    .then(() => setStatus("Table copied (tab-separated, paste straight into Excel)."))
-    .catch(() => setStatus("Copy failed – copy the table manually.", "error"));
+    .then(() => setStatus("Tabuľka skopírovaná (oddelené tabulátorom, vlož priamo do Excelu)."))
+    .catch(() => setStatus("Kopírovanie zlyhalo – skopíruj tabuľku ručne.", "error"));
 };
 
 /* ============================================================
