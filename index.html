@@ -468,25 +468,51 @@ async function drawAxes() {
 
   // frame aligned with X′/Y′ – a visual sign that measuring runs in local axes.
   // Spans from -margin to axis length + margin along both local axes.
-  try {
-    const size = Math.max(L, S.MIN_FRAME_MM);
-    const lo = -size * S.FRAME_MARGIN, hi = size * (1 + S.FRAME_MARGIN);
-    const at = (u, v) => ({ x: O.x + u * c - v * s, y: O.y + u * s + v * c, z: O.z });
-    const corners = [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi)];
-    const lines = corners.map((p, i) => ({
-      start: pickMM(p), end: pickMM(corners[(i + 1) % 4]), color: S.COLOR_FRAME
-    }));
-    const res = await api.markup.addLineMarkups(lines);
-    (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
-  } catch (e) { console.log("Axis frame error:", e && e.message); }
+  const note = await drawFrame(O, L, c, s);
+  if (note) setStatus(note, "error");
+  return note;
+}
+
+// Tries several markup types in turn, because not every Viewer build supports
+// every one of them. Returns an error text for the status box, or "" when drawn.
+async function drawFrame(O, L, c, s) {
+  const S = SETTINGS;
+  const size = Math.max(L, S.MIN_FRAME_MM);
+  const lo = -size * S.FRAME_MARGIN, hi = size * (1 + S.FRAME_MARGIN);
+  const at = (u, v) => ({ x: O.x + u * c - v * s, y: O.y + u * s + v * c, z: O.z });
+  const corners = [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi)];
+  const edges = corners.map((p, i) => [p, corners[(i + 1) % 4]]);
+  const seg = ([a, b]) => ({ start: pickMM(a), end: pickMM(b), color: S.COLOR_FRAME });
+
+  const attempts = [
+    ["line",     () => api.markup.addLineMarkups(edges.map(seg))],
+    ["freeline", () => api.markup.addFreelineMarkups([{ color: S.COLOR_FRAME, lines: edges.map(seg) }])],
+    ["dimension",() => api.markup.addMeasurementMarkups(edges.map(([a, b]) => dimension(a, b, S.COLOR_FRAME)))]
+  ];
+  const errors = [];
+  for (const [name, run] of attempts) {
+    try {
+      const res = await run();
+      const ids = (res || []).map(m => m && m.id).filter(id => id !== undefined);
+      if (ids.length) {
+        AXIS.markupIds.push(...ids);
+        console.log("Axis frame drawn as", name, "markups");
+        return "";
+      }
+      errors.push(name + ": nothing returned");
+    } catch (e) {
+      errors.push(name + ": " + (e && e.message ? e.message : String(e)));
+    }
+  }
+  return "Frame could not be drawn (" + errors.join("; ") + ").";
 }
 
 async function axisChanged(msg) {
   saveAxis();
   updateAxisUI();
   renderTable();
-  await drawAxes();
-  if (msg) setStatus(msg);
+  const note = await drawAxes();
+  if (msg) setStatus(msg + (note ? " " + note : ""), note ? "error" : "");
 }
 
 async function startAxisPicking() {
