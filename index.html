@@ -223,7 +223,8 @@ let knownPointIds = new Set();
 //  2D mode: Z′ = global Z, X′ lies in plan at angle theta (counter-clockwise
 //           from global +X), Y′ = X′ rotated +90°. Defined by 2 points or an angle.
 //  3D mode: tilted axes, defined by 3 points – origin, a point along X′ and a
-//           third point in the X′Y′ plane; Z′ is the normal of that plane (pointing up).
+//           third point in the X′Y′ plane; Y′ points towards that third point and
+//           Z′ = X′ × Y′ (right-handed, so it may point down or sideways).
 // The origin is only used for drawing the axes and for local coordinates of
 // picked points – differences don't depend on it.
 let axisPicking = false;
@@ -727,10 +728,12 @@ async function handleAxisPick(args) {
     setStatus("The third point lies on the X′ line – pick a point off to the side, in the X′Y′ plane.", "error");
     return;                              // origin and X′ point stay selected
   }
+  // Y′ points towards the third point (its part perpendicular to X′),
+  // Z′ follows the right-hand rule: X′ × Y′ = Z′
   const ex = vNorm(dX);
-  let ez = vNorm(n);
-  if (ez.z < 0) ez = vScale(ez, -1);     // keep Z′ pointing upwards
-  const ey = vCross(ez, ex);             // right-handed: X′ × Y′ = Z′
+  const t = vSub(p, O);
+  const ey = vNorm(vSub(t, vScale(ex, vDot(t, ex))));
+  const ez = vCross(ex, ey);
   AXIS.ex = ex; AXIS.ey = ey; AXIS.ez = ez;
   AXIS.theta = planAngleOf(ex, ey);
   await setAxes(O, vLen(dX));
