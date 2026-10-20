@@ -1,8 +1,8 @@
 {
-  "title": "Meranie XYZ",
-  "description": "Meranie vzdialenosti medzi 2 bodmi s rozkladom na zložky X, Y, Z vo farbách osí",
+  "title": "Meranie XYZ (lokálne osi)",
+  "description": "Meranie vzdialenosti medzi 2 bodmi s rozkladom na zložky X, Y, Z – aj v lokálnych osiach pozdĺž steny",
   "extensionType": ["3dviewer"],
-  "url": "https://tremendouz44.github.io/XYZ-Measure/",
-  "icon": "https://tremendouz44.github.io/XYZ-Measure/icon.png?v=2",
+  "url": "https://kolecko46.github.io/XYZ-Measure/",
+  "icon": "https://kolecko46.github.io/XYZ-Measure/icon.png?v=2",
   "enabled": true
 }
