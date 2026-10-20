@@ -129,7 +129,7 @@
     <span id="axisGon" class="muted"></span>
   </div>
   <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Measure in local axes X' Y'</button>
-  <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Show axes in model</button>
+  <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Show axes &amp; frame in model</button>
   <div id="axisInfo" class="axis-info">No local axes – measuring in global X / Y.</div>
 
   <h2>Coordinate lock</h2>
@@ -180,6 +180,9 @@ const SETTINGS = {
   MIN_COMPONENT_MM: 0.5,         // shorter components are not drawn
   MIN_AXIS_PICK_MM: 10,          // the 2 axis points must be at least this far apart in plan
   MIN_AXIS_DRAW_MM: 5000,        // drawn axes are at least this long
+  COLOR_FRAME:  { r: 255, g: 214, b: 0,   a: 255 },  // yellow - local-axes frame
+  MIN_FRAME_MM: 20000,           // the frame is at least this big (20 m)
+  FRAME_MARGIN: 0.2,             // frame extends 20 % beyond the axes on each side
   DECIMALS_MM:  0,
   DECIMALS_M:   3,
   TOOL_NAME:    "picking",
@@ -462,6 +465,20 @@ async function drawAxes() {
     ]);
     (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
   } catch (e) { console.log("Axis label error:", e && e.message); }
+
+  // frame aligned with X′/Y′ – a visual sign that measuring runs in local axes.
+  // Spans from -margin to axis length + margin along both local axes.
+  try {
+    const size = Math.max(L, S.MIN_FRAME_MM);
+    const lo = -size * S.FRAME_MARGIN, hi = size * (1 + S.FRAME_MARGIN);
+    const at = (u, v) => ({ x: O.x + u * c - v * s, y: O.y + u * s + v * c, z: O.z });
+    const corners = [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi)];
+    const lines = corners.map((p, i) => ({
+      start: pickMM(p), end: pickMM(corners[(i + 1) % 4]), color: S.COLOR_FRAME
+    }));
+    const res = await api.markup.addLineMarkups(lines);
+    (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
+  } catch (e) { console.log("Axis frame error:", e && e.message); }
 }
 
 async function axisChanged(msg) {
