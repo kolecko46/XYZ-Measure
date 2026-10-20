@@ -79,6 +79,7 @@
   <div>
     <button id="btnMeasure" class="primary" disabled>▶ Measure</button>
     <button id="btnClear" disabled>🗑 Delete all</button>
+    <button id="btnAngle" class="primary" disabled title="Interior angle from 3 points: vertex 0, then points 1 and 2 – measured in the XY plane of the system in use">∠ Angle</button>
     <button id="btnCopy" disabled>📋 Copy table</button>
   </div>
 
@@ -124,12 +125,10 @@
     <button id="btnAxisRot" disabled title="Rotate the UCS by +90° (swap X′ and Y′)">↻ 90°</button>
     <button id="btnAxisClear" disabled title="Delete the UCS completely and go back to global X / Y / Z">🗑 Clear UCS</button>
   </div>
-  <button id="btnAngle" class="primary ucs-btn" disabled>∠ Measure angle from X′</button>
   <div class="angle-row" id="angleRow">
     <label for="axisAngle">X' angle</label>
     <input id="axisAngle" type="number" step="0.0001" value="0" disabled title="Counter-clockwise from global +X, in degrees">
     <span>°</span>
-    <span id="axisGon" class="muted"></span>
   </div>
   <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Measure in UCS</button>
   <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Show axes &amp; frame in model</button>
@@ -160,10 +159,10 @@
   </div>
 
   <div id="angleWrap" style="display:none">
-    <h2>Angles from UCS X′ (vertex = origin)</h2>
+    <h2>Angles</h2>
     <table>
       <thead>
-        <tr><th>#</th><th class="ca">Hz [°]</th><th>Hz [gon]</th><th>V [°]</th><th id="thAngleDist">2D [mm]</th><th></th></tr>
+        <tr><th>#</th><th class="ca">Angle [°]</th><th></th></tr>
       </thead>
       <tbody id="angleBody"></tbody>
     </table>
@@ -198,8 +197,8 @@ const SETTINGS = {
   MIN_AXIS_DRAW_MM: 5000,        // drawn axes are at least this long
   COLOR_FRAME:  { r: 255, g: 214, b: 0,   a: 255 },  // yellow - local-axes frame
   COLOR_ANGLE:  { r: 255, g: 152, b: 0,   a: 255 },  // orange - angle ray, arc and label
-  ANGLE_ARC_RATIO: 0.3,          // arc radius relative to the target distance
-  ANGLE_ARC_MIN_MM: 500,         // arc radius at least this (but never past the target)
+  ANGLE_ARC_RATIO: 0.3,          // arc radius relative to the shorter arm
+  ANGLE_ARC_MIN_MM: 500,         // arc radius at least this (but never longer than the arms)
   ANGLE_ARC_STEP_DEG: 5,         // arc drawn from segments of this many degrees
   DECIMALS_ANGLE: 4,
   MIN_FRAME_MM: 20000,           // the frame is at least this big (20 m)
@@ -495,7 +494,6 @@ function updateAxisUI() {
   // the plan angle only applies to 2D axes
   $("angleRow").style.display = AXIS.defined && is3D ? "none" : "";
   if (document.activeElement !== $("axisAngle")) $("axisAngle").value = deg.toFixed(4);
-  $("axisGon").textContent = AXIS.defined ? "(" + (deg * 400 / 360).toFixed(4) + " gon)" : "";
   $("axisAngle").disabled = !api;
 
   $("btnAxisRot").disabled = !AXIS.defined || !api;
@@ -1006,9 +1004,8 @@ $("btnCopy").onclick = () => {
              fmt(Math.abs(m.dz)), fmt(m.d3), fmt(m.d2)].join("\t") + "\n";
   }
   if (angles.length) {
-    text += "\nAngle #\tUCS\tHz [°]\tHz [gon]\tV [°]\t2D [" + u + "]\n";
-    for (const a of angles)
-      text += [a.num, a.axesDesc, fmtDeg(a.hz), fmtGon(a.hz), fmtDeg(a.v), fmt(a.d2)].join("\t") + "\n";
+    text += "\nAngle #\tAngle [°]\n";
+    for (const a of angles) text += [a.num, fmtDeg(a.angle)].join("\t") + "\n";
   }
   navigator.clipboard.writeText(text)
     .then(() => setStatus("Table copied (tab-separated, paste straight into Excel)."))
@@ -1016,41 +1013,47 @@ $("btnCopy").onclick = () => {
 };
 
 /* ============================================================
-   ANGLE MEASURING FROM THE UCS
-   Vertex = UCS origin (0,0), zero direction = X′. Each click gives the
-   horizontal angle Hz of the target in the X′Y′ plane, measured from X′
-   towards Y′ (0–360°), plus the vertical angle V above/below that plane.
+   ANGLE MEASURING (3 points)
+   Click point 0 (vertex), point 1 and point 2. The interior angle (0–180°)
+   between 0→1 and 0→2 is measured in the XY plane of the coordinate system
+   in use (global XY, or the UCS X′Y′ plane): points 1 and 2 are locked to
+   the Z of point 0, i.e. projected into the plane through point 0.
    ============================================================ */
 let angleMode = false;
-let angles = [];                 // {num, hz, v, d2, axesDesc, markupIds:[]}
+let anglePts = [];               // points of the angle being picked
+let angleBasis = null;           // coordinate system captured at point 0
+let angles = [];                 // {num, angle, axesDesc, markupIds:[]}
 let angleCounter = 0;
 
-const canMeasureAngles = () => localActive() && !!AXIS.origin;
 const fmtDeg = rad => (rad * DEG).toFixed(SETTINGS.DECIMALS_ANGLE);
-const fmtGon = rad => (rad * 200 / Math.PI).toFixed(SETTINGS.DECIMALS_ANGLE);
 
 function updateAngleUI() {
-  $("btnAngle").disabled = !api || !canMeasureAngles();
+  $("btnAngle").disabled = !api;
   setToggle("btnAngle", angleMode);
-  $("btnAngle").textContent = angleMode ? "⏹ Stop measuring angles" : "∠ Measure angle from X′";
-  $("btnAngle").title = canMeasureAngles()
-    ? "Vertex = UCS origin, 0 = X′ axis; click target points"
-    : "Needs a UCS with an origin and Measure in UCS switched on";
-  if (angleMode && !canMeasureAngles()) stopAngleMode("UCS changed – angle measuring stopped.");
+  $("btnAngle").textContent = angleMode ? "⏹ Stop angle" : "∠ Angle";
+}
+
+function anglePrompt() {
+  const plane = local3D() ? "UCS X′Y′" : localActive() ? "UCS XY" : "XY";
+  if (anglePts.length === 0) return "Angle – click POINT 0 (the vertex). Measured in the " + plane + " plane.";
+  if (anglePts.length === 1) return "Point 0 set – click POINT 1 (first arm 0→1).";
+  return "Point 1 set – click POINT 2 (second arm 0→2).";
 }
 
 async function startAngleMode() {
   if (axisPicking) await finishAxisPicking();
   if (measuring) await stopMeasuring();
   await rememberPointMarkups();
-  if (!await activateTool("Measure angle", "Click target points – angle from X′ at the UCS origin")) return;
+  if (!await activateTool("Measure angle", "Click point 0 (vertex), then point 1 and point 2")) return;
   angleMode = true;
+  anglePts = [];
   updateAngleUI();
-  setStatus("Angles – click a TARGET point. 0 = X′, counted towards Y′.", "active");
+  setStatus(anglePrompt(), "active");
 }
 
 async function stopAngleMode(text) {
   angleMode = false;
+  anglePts = [];
   updateAngleUI();
   await resetTool();
   await removeNewPointLabels();
@@ -1062,59 +1065,82 @@ $("btnAngle").onclick = () => angleMode ? stopAngleMode() : startAngleMode();
 async function handleAnglePick(args) {
   const p = extractPoint(args);
   if (!p) return;
-  if (!canMeasureAngles()) { await stopAngleMode("No UCS – angle measuring stopped."); return; }
+  const S = SETTINGS;
 
-  const O = AXIS.origin;
-  const l = toLocal(vSub(p, O), { ex: AXIS.ex, ey: AXIS.ey, ez: AXIS.ez });
-  const d2 = Math.hypot(l.u, l.v);
-  if (d2 < SETTINGS.MIN_AXIS_PICK_MM) {
-    setStatus("The target is at the UCS origin (or straight above it) – click a point further away.", "error");
+  if (anglePts.length === 0) {
+    anglePts = [p];
+    angleBasis = currentBasis();         // the angle stays in this system even if UCS changes meanwhile
+    setStatus(anglePrompt(), "active");
     return;
   }
-  const hz = normAngle(Math.atan2(l.v, l.u));
-  const v = Math.atan2(l.w, d2);
+
+  // in-plane components relative to point 0 (Z locked to point 0)
+  const l = toLocal(vSub(p, anglePts[0]), angleBasis);
+  if (Math.hypot(l.u, l.v) < S.MIN_AXIS_PICK_MM) {
+    setStatus("This point is at point 0 (or straight above/below it) – click a point further away.", "error");
+    return;                              // already picked points stay
+  }
+  anglePts.push(p);
+  if (anglePts.length < 3) { setStatus(anglePrompt(), "active"); return; }
+
+  const [P0, P1, P2] = anglePts;
+  const B = angleBasis;
+  const a = toLocal(vSub(P1, P0), B), b = toLocal(vSub(P2, P0), B);
+  const la = Math.hypot(a.u, a.v), lb = Math.hypot(b.u, b.v);
+  const cos = (a.u * b.u + a.v * b.v) / (la * lb);
+  const angle = Math.acos(Math.max(-1, Math.min(1, cos)));   // interior angle 0–180°
 
   angleCounter++;
-  const rec = { num: angleCounter, hz, v, d2, axesDesc: axesDesc(), markupIds: [] };
+  const rec = { num: angleCounter, angle,
+                axesDesc: B === GLOBAL_BASIS ? "global" : "UCS " + axesDesc(), markupIds: [] };
   let note = "";
-  try { rec.markupIds = await drawAngle(O, l, hz); }
+  try { rec.markupIds = await drawAngle(P0, a, b, angle, B); }
   catch (e) { note = " DRAWING FAILED: " + (e && e.message ? e.message : String(e)); }
   if (!rec.markupIds.length && !note) note = " WARNING: nothing was drawn.";
   await removeNewPointLabels();
 
+  anglePts = [];
   angles.push(rec);
   renderAngles();
-  setStatus("Angle #" + rec.num + ": Hz " + fmtDeg(hz) + "° (" + fmtGon(hz) + " gon), V " +
-            fmtDeg(v) + "°, 2D " + fmt(d2) + (isOn("tglMeters") ? " m" : " mm") + "." + note +
-            " Click the next target.", note ? "error" : "active");
+  setStatus("Angle #" + rec.num + ": " + fmtDeg(angle) + "°." + note +
+            " Click POINT 0 of the next angle.", note ? "error" : "active");
 }
 
-// ray from the origin to the target (projected into X′Y′), an arc from X′ to it
-// and a label; a short line drops from the projection to the target if it is off-plane
-async function drawAngle(O, l, hz) {
+// both arms projected into the plane through point 0, an arc between them and a label;
+// short drop lines show where off-plane points were projected from
+async function drawAngle(P0, a, b, angle, B) {
   const S = SETTINGS;
-  const at = (u, v, w = 0) => vAdd(O, vAdd(vAdd(vScale(AXIS.ex, u), vScale(AXIS.ey, v)), vScale(AXIS.ez, w)));
-  const P = at(l.u, l.v);
-  const d2 = Math.hypot(l.u, l.v);
-  const r = Math.min(Math.max(d2 * S.ANGLE_ARC_RATIO, S.ANGLE_ARC_MIN_MM), d2);
+  const at = (u, v) => vAdd(P0, vAdd(vScale(B.ex, u), vScale(B.ey, v)));
+  const A1 = at(a.u, a.v), A2 = at(b.u, b.v);
+  const r = Math.min(Math.max(Math.min(Math.hypot(a.u, a.v), Math.hypot(b.u, b.v)) * S.ANGLE_ARC_RATIO,
+                              S.ANGLE_ARC_MIN_MM),
+                     Math.hypot(a.u, a.v), Math.hypot(b.u, b.v));
   const ids = [];
 
-  const steps = Math.max(2, Math.ceil(hz / (S.ANGLE_ARC_STEP_DEG / DEG)));
+  // arc from arm 1 towards arm 2 the short way round
+  const t1 = Math.atan2(a.v, a.u);
+  let dt = Math.atan2(b.v, b.u) - t1;
+  if (dt > Math.PI) dt -= TWO_PI;
+  if (dt < -Math.PI) dt += TWO_PI;
+  const steps = Math.max(2, Math.ceil(Math.abs(dt) / (S.ANGLE_ARC_STEP_DEG / DEG)));
   const arc = [];
   for (let i = 0; i < steps; i++) {
-    const a0 = hz * i / steps, a1 = hz * (i + 1) / steps;
-    arc.push([at(r * Math.cos(a0), r * Math.sin(a0)), at(r * Math.cos(a1), r * Math.sin(a1))]);
+    const s0 = t1 + dt * i / steps, s1 = t1 + dt * (i + 1) / steps;
+    arc.push([at(r * Math.cos(s0), r * Math.sin(s0)), at(r * Math.cos(s1), r * Math.sin(s1))]);
   }
-  const rays = [[O, P]];
-  if (Math.abs(l.w) > S.MIN_COMPONENT_MM) rays.push([P, at(l.u, l.v, l.w)]);
-  ids.push(...(await addLines(rays, S.COLOR_ANGLE)).ids);
+
+  const lines = [[P0, A1], [P0, A2]];
+  if (Math.abs(a.w) > S.MIN_COMPONENT_MM) lines.push([A1, vAdd(A1, vScale(B.ez, a.w))]);
+  if (Math.abs(b.w) > S.MIN_COMPONENT_MM) lines.push([A2, vAdd(A2, vScale(B.ez, b.w))]);
+  ids.push(...(await addLines(lines, S.COLOR_ANGLE)).ids);
   ids.push(...(await addLines(arc, S.COLOR_ANGLE, true)).ids);
 
   try {
-    const mid = at(r * Math.cos(hz / 2), r * Math.sin(hz / 2));
-    const out = vAdd(mid, vScale(vNorm(vSub(mid, O)), Math.max(r * 0.15, S.LABEL_OFFSET_MM)));
+    const tm = t1 + dt / 2;
+    const mid = at(r * Math.cos(tm), r * Math.sin(tm));
+    const out = vAdd(mid, vScale(vNorm(vSub(mid, P0)), Math.max(r * 0.15, S.LABEL_OFFSET_MM)));
     const t = await api.markup.addTextMarkup([{ start: pickMM(mid), end: pickMM(out),
-      text: "Hz " + fmtDeg(hz) + "° / " + fmtGon(hz) + " gon", color: S.COLOR_ANGLE }]);
+      text: fmtDeg(angle) + "°", color: S.COLOR_ANGLE }]);
     (t || []).forEach(m => { if (m.id !== undefined) ids.push(m.id); });
   } catch (e) { console.log("Angle label error:", e && e.message); }
   return ids;
@@ -1122,17 +1148,13 @@ async function drawAngle(O, l, hz) {
 
 function renderAngles() {
   $("angleWrap").style.display = angles.length ? "" : "none";
-  $("thAngleDist").textContent = "2D [" + (isOn("tglMeters") ? "m" : "mm") + "]";
   const tbody = $("angleBody");
   tbody.innerHTML = "";
   for (const a of angles) {
     const tr = document.createElement("tr");
     tr.innerHTML =
-      "<td title='UCS: " + a.axesDesc + "'>" + a.num + "</td>" +
-      "<td class='ca'>" + fmtDeg(a.hz) + "</td>" +
-      "<td>" + fmtGon(a.hz) + "</td>" +
-      "<td>" + fmtDeg(a.v) + "</td>" +
-      "<td>" + fmt(a.d2) + "</td>" +
+      "<td title='" + a.axesDesc + "'>" + a.num + "</td>" +
+      "<td class='ca'>" + fmtDeg(a.angle) + "</td>" +
       "<td class='row-action'><button title='Delete angle'>✕</button></td>";
     tr.querySelector("button").onclick = () => deleteAngle(a);
     tbody.appendChild(tr);
