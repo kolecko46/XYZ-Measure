@@ -67,7 +67,7 @@
   .cy { color: var(--color-y); font-weight: 600; }
   .cz { color: var(--color-z); font-weight: 600; }
   .c3 { font-weight: 700; }
-  .ca { color: #e65100; font-weight: 600; }
+  .ca { color: #e600b2; font-weight: 600; }
   .row-action button { padding: 2px 6px; margin: 0 2px; font-size: 11px; }
   #tableWrap { max-height: 40vh; overflow-y: auto; margin-top: 10px; }
 </style>
@@ -187,20 +187,20 @@ const SETTINGS = {
   COLOR_Y:      { r: 173, g: 226, b: 84,  a: 255 },  // green - Y
   COLOR_Z:      { r: 44,  g: 143, b: 255, a: 255 },  // blue  - Z
   COLOR_MAIN:   null,            // null = Viewer default colour
-  COLOR_AXIS_X: { r: 250, g: 102, b: 123, a: 255 },  // UCS X' axis (gizmo red)
-  COLOR_AXIS_Y: { r: 173, g: 226, b: 84,  a: 255 },  // UCS Y' axis (gizmo green)
-  COLOR_AXIS_Z: { r: 44,  g: 143, b: 255, a: 255 },  // UCS Z' axis (gizmo blue)
+  COLOR_AXIS_X: { r: 214, g: 58,  b: 84,  a: 255 },  // UCS X' axis (gizmo red, darker)
+  COLOR_AXIS_Y: { r: 104, g: 168, b: 28,  a: 255 },  // UCS Y' axis (gizmo green, darker)
+  COLOR_AXIS_Z: { r: 22,  g: 104, b: 212, a: 255 },  // UCS Z' axis (gizmo blue, darker)
   AXIS_Z_RATIO: 0.5,             // drawn Z' axis length relative to X'/Y' (3D mode)
   PICK_TO_MM:   1000,            // pick event (m) -> mm
   MIN_COMPONENT_MM: 0.5,         // shorter components are not drawn
   MIN_AXIS_PICK_MM: 10,          // axis points must be at least this far apart (2D: in plan; 3D: also off the X' line)
   MIN_AXIS_DRAW_MM: 5000,        // drawn axes are at least this long
   COLOR_FRAME:  { r: 255, g: 214, b: 0,   a: 255 },  // yellow - local-axes frame
-  COLOR_ANGLE:  { r: 255, g: 152, b: 0,   a: 255 },  // orange - angle ray, arc and label
+  COLOR_ANGLE:  { r: 230, g: 0,   b: 178, a: 255 },  // magenta (as the Viewer's own measurements) - angle
   ANGLE_ARC_RATIO: 0.3,          // arc radius relative to the shorter arm
   ANGLE_ARC_MIN_MM: 500,         // arc radius at least this (but never longer than the arms)
   ANGLE_ARC_STEP_DEG: 5,         // arc drawn from segments of this many degrees
-  DECIMALS_ANGLE: 4,
+  DECIMALS_ANGLE: 6,
   MIN_FRAME_MM: 20000,           // the frame is at least this big (20 m)
   FRAME_MARGIN: 0.2,             // frame extends 20 % beyond the axes on each side
   DECIMALS_MM:  0,
@@ -228,6 +228,7 @@ let knownPointIds = new Set();
 // picked points – differences don't depend on it.
 let axisPicking = false;
 let axisPts = [];                // points picked so far while defining axes
+let axisLockBasis = null;        // system the locks refer to while defining a UCS
 let axisPickMode = "2d";         // which "Set UCS" button is picking: "2d" (2 points) or "3d" (3 points)
 let showAxesPref = true;         // what the user chose; the button shows OFF while axes can't be shown
 const AXIS = {
@@ -411,6 +412,21 @@ function fromLocal(u, v, w, B) {
   return vAdd(vAdd(vScale(B.ex, u), vScale(B.ey, v)), vScale(B.ez, w));
 }
 
+// Coordinate lock: the point keeps the locked coordinates of point 0 of its sequence,
+// in the given coordinate system. Each point takes the lock state at its own click.
+function readLocks() {
+  return { x: isOn("lockX"), y: isOn("lockY"), z: isOn("lockZ") };
+}
+function applyLocks(P0, p, B, L) {
+  const l = toLocal(vSub(p, P0), B);
+  return vAdd(P0, fromLocal(L.x ? 0 : l.u, L.y ? 0 : l.v, L.z ? 0 : l.w, B));
+}
+function lockNote(L, B) {
+  const pr = B === GLOBAL_BASIS ? ["", "", ""] : ["′", "′", B.ez.z < 1 - 1e-9 ? "′" : ""];
+  const on = [["X", L.x, pr[0]], ["Y", L.y, pr[1]], ["Z", L.z, pr[2]]].filter(a => a[1]).map(a => a[0] + a[2]);
+  return on.length ? " (locked " + on.join(", ") + ")" : "";
+}
+
 // 2D: build the basis from the plan angle
 function basisFromTheta() {
   const c = Math.cos(AXIS.theta), s = Math.sin(AXIS.theta);
@@ -514,9 +530,9 @@ function updateAxisUI() {
   $("lockX").textContent = "Lock X" + p;
   $("lockY").textContent = "Lock Y" + p;
   $("lockZ").textContent = "Lock Z" + pz;
-  $("lockX").title = "Second point keeps the X" + p + " of the first point";
-  $("lockY").title = "Second point keeps the Y" + p + " of the first point";
-  $("lockZ").title = "Second point keeps the Z" + pz + " of the first point";
+  $("lockX").title = "Next clicked point keeps the X" + p + " of point 0 (measure, angle, Set UCS)";
+  $("lockY").title = "Next clicked point keeps the Y" + p + " of point 0 (measure, angle, Set UCS)";
+  $("lockZ").title = "Next clicked point keeps the Z" + pz + " of point 0 (measure, angle, Set UCS)";
   $("thX").textContent = "|ΔX" + p + "|";
   $("thY").textContent = "|ΔY" + p + "|";
   $("thZ").textContent = "|ΔZ" + pz + "|";
@@ -669,18 +685,22 @@ $("btnUcs2").onclick = () => onUcsButton("2d");
 $("btnUcs3").onclick = () => onUcsButton("3d");
 
 async function handleAxisPick(args) {
-  const p = extractPoint(args);
+  let p = extractPoint(args);
   if (!p) return;
   const S = SETTINGS;
   const is3D = axisPickMode === "3d";
 
   if (axisPts.length === 0) {
     axisPts.push(p);
+    axisLockBasis = currentBasis();      // locks work in the system in use before the new UCS
     setStatus(axisPickPrompt(), "active");
     return;
   }
 
   const O = axisPts[0];
+  const L = readLocks();
+  const ln = lockNote(L, axisLockBasis);
+  p = applyLocks(O, p, axisLockBasis, L);
   if (axisPts.length === 1) {
     const d = vSub(p, O);
     if (is3D ? vLen(d) < S.MIN_AXIS_PICK_MM : Math.hypot(d.x, d.y) < S.MIN_AXIS_PICK_MM) {
@@ -696,7 +716,7 @@ async function handleAxisPick(args) {
       return;
     }
     axisPts.push(p);
-    setStatus(axisPickPrompt(), "active");
+    setStatus(axisPickPrompt() + (ln ? " Point 1" + ln + "." : ""), "active");
     return;
   }
 
@@ -1063,7 +1083,7 @@ async function stopAngleMode(text) {
 $("btnAngle").onclick = () => angleMode ? stopAngleMode() : startAngleMode();
 
 async function handleAnglePick(args) {
-  const p = extractPoint(args);
+  let p = extractPoint(args);
   if (!p) return;
   const S = SETTINGS;
 
@@ -1074,6 +1094,11 @@ async function handleAnglePick(args) {
     return;
   }
 
+  // coordinate locks of this click, relative to point 0
+  const L = readLocks();
+  const ln = lockNote(L, angleBasis);
+  p = applyLocks(anglePts[0], p, angleBasis, L);
+
   // in-plane components relative to point 0 (Z locked to point 0)
   const l = toLocal(vSub(p, anglePts[0]), angleBasis);
   if (Math.hypot(l.u, l.v) < S.MIN_AXIS_PICK_MM) {
@@ -1081,7 +1106,7 @@ async function handleAnglePick(args) {
     return;                              // already picked points stay
   }
   anglePts.push(p);
-  if (anglePts.length < 3) { setStatus(anglePrompt(), "active"); return; }
+  if (anglePts.length < 3) { setStatus(anglePrompt() + (ln ? " Point 1" + ln + "." : ""), "active"); return; }
 
   const [P0, P1, P2] = anglePts;
   const B = angleBasis;
