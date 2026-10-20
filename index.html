@@ -201,6 +201,7 @@ let knownPointIds = new Set();
 // the axes and for local coordinates of picked points – differences don't depend on it.
 let axisPicking = false;
 let axisFirst = null;
+let showAxesPref = true;         // what the user chose; the button shows OFF while axes can't be shown
 const AXIS = { defined: false, theta: 0, origin: null, len: SETTINGS.MIN_AXIS_DRAW_MM, markupIds: [] };
 let storageKey = "xyzMeasure.axis.default";
 
@@ -408,6 +409,12 @@ function updateAxisUI() {
   $("btnAxisClear").disabled = (!AXIS.defined && !axisPicking) || !api;
   $("tglLocal").disabled = !AXIS.defined;
 
+  // "Show axes" only makes sense while local axes are on and have an origin;
+  // otherwise show it OFF and disabled, and restore the user's choice later
+  const canShow = local && !!AXIS.origin;
+  setToggle("tglShowAxes", canShow && showAxesPref);
+  $("tglShowAxes").disabled = !canShow;
+
   const p = local ? "′" : "";
   $("lockX").textContent = "Lock X" + p;
   $("lockY").textContent = "Lock Y" + p;
@@ -551,7 +558,7 @@ $("axisAngle").addEventListener("change", () => {
 });
 
 bindToggle("tglLocal", () => axisChanged());
-bindToggle("tglShowAxes", () => drawAxes());
+bindToggle("tglShowAxes", () => { showAxesPref = isOn("tglShowAxes"); drawAxes(); });
 
 /* ============================================================
    HANDLING A PICKED POINT (measurement is created on the 2nd click)
