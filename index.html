@@ -120,6 +120,7 @@
   <div class="axis-btns">
     <button id="btnAxisDefine" class="primary" disabled title="Pick the origin, then a second point along the wall – that direction becomes X'">📏 Define axes (2 points)</button>
     <button id="btnAxisRot" disabled title="Rotate the local axes by +90° (swap which wall is X')">↻ 90°</button>
+    <button id="btnAxisClear" disabled title="Delete the local axes completely and go back to global X / Y">🗑 Axes</button>
   </div>
   <div class="angle-row">
     <label for="axisAngle">X' angle</label>
@@ -404,6 +405,7 @@ function updateAxisUI() {
   if (document.activeElement !== $("axisAngle")) $("axisAngle").value = deg.toFixed(4);
   $("axisGon").textContent = AXIS.defined ? "(" + (deg * 400 / 360).toFixed(4) + " gon)" : "";
   $("btnAxisRot").disabled = !AXIS.defined || !api;
+  $("btnAxisClear").disabled = (!AXIS.defined && !axisPicking) || !api;
   $("tglLocal").disabled = !AXIS.defined;
 
   const p = local ? "′" : "";
@@ -474,6 +476,7 @@ async function startAxisPicking() {
   }
   setToggle("btnAxisDefine", true);
   $("btnAxisDefine").textContent = "✕ Cancel";
+  updateAxisUI();
   setStatus("Axes – pick the ORIGIN (e.g. a building corner).", "active");
 }
 
@@ -482,6 +485,7 @@ async function finishAxisPicking() {
   axisFirst = null;
   setToggle("btnAxisDefine", false);
   $("btnAxisDefine").textContent = "📏 Define axes (2 points)";
+  updateAxisUI();
   await resetTool();
   await removeNewPointLabels();
 }
@@ -517,6 +521,24 @@ async function handleAxisPick(args) {
 $("btnAxisRot").onclick = () => {
   AXIS.theta = normAngle(AXIS.theta + Math.PI / 2);
   axisChanged("Axes rotated by 90°: X′ at " + thetaDeg().toFixed(4) + "°.");
+};
+
+// wipe the local axes completely: markups in the model, stored state, UI
+$("btnAxisClear").onclick = async () => {
+  if (axisPicking) await finishAxisPicking();
+  if (measuring) firstPoint = null;     // an unfinished pick would mix two axis systems
+  AXIS.defined = false;
+  AXIS.theta = 0;
+  AXIS.origin = null;
+  AXIS.len = SETTINGS.MIN_AXIS_DRAW_MM;
+  setToggle("tglLocal", false);
+  try { localStorage.removeItem(storageKey); } catch (e) {}
+  updateAxisUI();
+  renderTable();
+  await drawAxes();                     // removes the drawn axes, draws nothing new
+  setStatus("Local axes deleted – measuring in global X / Y." +
+            (measuring ? " Pick the FIRST point." : " Click Define axes to set new ones."),
+            measuring ? "active" : "");
 };
 
 $("axisAngle").addEventListener("change", () => {
