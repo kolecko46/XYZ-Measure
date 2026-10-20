@@ -73,7 +73,7 @@
 </style>
 </head>
 <body>
-  <h1>📐 XYZ Measure <span class="muted" id="appVersion" title="If this does not match the latest version, press Ctrl+F5">v2026-10-20.2</span></h1>
+  <h1>📐 XYZ Measure <span class="muted" id="appVersion" title="If this does not match the latest version, press Ctrl+F5">v2026-10-20.3</span></h1>
   <div id="status" class="status">Connecting to 3D Viewer…</div>
 
   <div>
@@ -115,6 +115,7 @@
   <h2>Options</h2>
   <button id="tglContinuous" class="primary tgl on" aria-pressed="true">Continuous measuring</button>
   <button id="tglComponents" class="primary tgl on" aria-pressed="true">Draw X Y Z components</button>
+  <button id="tglIds" class="primary tgl on" aria-pressed="true" title="Label each measurement in the model with its number from the table (#1, ∠1 …)">Show IDs in model</button>
   <button id="tglLabels" class="primary tgl" aria-pressed="false" style="display:none">Permanent value labels</button>
   <button id="tglMeters" class="primary tgl" aria-pressed="false" style="display:none">Units in meters (default mm)</button>
 
@@ -196,6 +197,7 @@ const SETTINGS = {
   MIN_AXIS_PICK_MM: 10,          // axis points must be at least this far apart (2D: in plan; 3D: also off the X' line)
   MIN_AXIS_DRAW_MM: 5000,        // drawn axes are at least this long
   COLOR_FRAME:  { r: 255, g: 214, b: 0,   a: 255 },  // yellow - local-axes frame
+  COLOR_ID:     { r: 33,  g: 33,  b: 33,  a: 255 },  // dark grey - measurement ID labels (#1 …)
   COLOR_ANGLE:  { r: 230, g: 0,   b: 178, a: 255 },  // magenta (as the Viewer's own measurements) - angle
   ANGLE_ARC_RATIO: 0.3,          // arc radius relative to the shorter arm
   ANGLE_ARC_MIN_MM: 500,         // arc radius at least this (but never longer than the arms)
@@ -325,6 +327,7 @@ bindToggle("snapFaces",  onSnapChanged);
 
 bindToggle("tglContinuous");
 bindToggle("tglComponents");
+bindToggle("tglIds");
 bindToggle("tglLabels");
 bindToggle("tglMeters", () => { renderTable(); renderAngles(); });
 bindToggle("lockX");
@@ -874,7 +877,7 @@ async function handlePick(args) {
   // drawing problems are shown in the status box instead of failing silently
   let drawNote = "";
   try {
-    record.markupIds = await drawMarkups(A, B, du, dv, dz, d3, Bs, prime, primeZ);
+    record.markupIds = await drawMarkups(A, B, du, dv, dz, d3, Bs, prime, primeZ, record.num);
     if (!record.markupIds.length) drawNote = " WARNING: the Viewer returned no markups (nothing drawn).";
   } catch (e) {
     drawNote = " DRAWING FAILED: " + (e && e.message ? e.message : String(e));
@@ -921,7 +924,7 @@ function labelAt(a, b, text, color) {
   return t;
 }
 
-async function drawMarkups(A, B, du, dv, dz, d3, Bs, prime, primeZ) {
+async function drawMarkups(A, B, du, dv, dz, d3, Bs, prime, primeZ, num) {
   const S = SETTINGS;
   // corners of the staircase: along X(′) first, then Y(′), then Z(′)
   const P1 = vAdd(A,  vScale(Bs.ex, du));
@@ -938,6 +941,16 @@ async function drawMarkups(A, B, du, dv, dz, d3, Bs, prime, primeZ) {
   }
   const resDims = await api.markup.addMeasurementMarkups(dims);
   (resDims || []).forEach(m => { if (m.id !== undefined) ids.push(m.id); });
+
+  // ID from the table (#1, #2 …) on a short leader at the start point,
+  // so it does not cover the Viewer's own length label in the middle
+  if (isOn("tglIds")) {
+    try {
+      const up = { x: A.x, y: A.y, z: A.z + Math.max(S.LABEL_OFFSET_MM * 2, d3 * 0.06) };
+      const res = await api.markup.addTextMarkup([{ start: pickMM(A), end: pickMM(up), text: "#" + num, color: S.COLOR_ID }]);
+      (res || []).forEach(m => { if (m.id !== undefined) ids.push(m.id); });
+    } catch (e) { console.log("ID label error:", e && e.message); }
+  }
 
   if (isOn("tglLabels")) {
     const texts = [ labelAt(A, B, "3D: " + fmt(d3) + unit, S.COLOR_MAIN) ];
@@ -1122,7 +1135,7 @@ async function handleAnglePick(args) {
   const rec = { num: angleCounter, angle,
                 axesDesc: B === GLOBAL_BASIS ? "global" : "UCS " + axesDesc(), markupIds: [] };
   let note = "";
-  try { rec.markupIds = await drawAngle(P0, a, b, angle, B); }
+  try { rec.markupIds = await drawAngle(P0, a, b, angle, B, rec.num); }
   catch (e) { note = " DRAWING FAILED: " + (e && e.message ? e.message : String(e)); }
   if (!rec.markupIds.length && !note) note = " WARNING: nothing was drawn.";
   await removeNewPointLabels();
@@ -1136,7 +1149,7 @@ async function handleAnglePick(args) {
 
 // both arms projected into the plane through point 0, an arc between them and a label;
 // short drop lines show where off-plane points were projected from
-async function drawAngle(P0, a, b, angle, B) {
+async function drawAngle(P0, a, b, angle, B, num) {
   const S = SETTINGS;
   const at = (u, v) => vAdd(P0, vAdd(vScale(B.ex, u), vScale(B.ey, v)));
   const A1 = at(a.u, a.v), A2 = at(b.u, b.v);
@@ -1168,7 +1181,7 @@ async function drawAngle(P0, a, b, angle, B) {
     const mid = at(r * Math.cos(tm), r * Math.sin(tm));
     const out = vAdd(mid, vScale(vNorm(vSub(mid, P0)), Math.max(r * 0.15, S.LABEL_OFFSET_MM)));
     const t = await api.markup.addTextMarkup([{ start: pickMM(mid), end: pickMM(out),
-      text: fmtDeg(angle) + "°", color: S.COLOR_ANGLE }]);
+      text: (isOn("tglIds") ? "∠" + num + ": " : "") + fmtDeg(angle) + "°", color: S.COLOR_ANGLE }]);
     (t || []).forEach(m => { if (m.id !== undefined) ids.push(m.id); });
   } catch (e) { console.log("Angle label error:", e && e.message); }
   return ids;
@@ -1181,7 +1194,7 @@ function renderAngles() {
   for (const a of angles) {
     const tr = document.createElement("tr");
     tr.innerHTML =
-      "<td title='" + a.axesDesc + "'>" + a.num + "</td>" +
+      "<td title='" + a.axesDesc + "'>∠" + a.num + "</td>" +
       "<td class='ca'>" + fmtDeg(a.angle) + "</td>" +
       "<td class='row-action'><button title='Delete angle'>✕</button></td>";
     tr.querySelector("button").onclick = () => deleteAngle(a);
