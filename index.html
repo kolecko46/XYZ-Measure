@@ -50,10 +50,9 @@
   .snap-row span { font-size: 12px; cursor: pointer; user-select: none; }
 
   /* Local axes */
-  .mode-row { margin-bottom: 6px; }
+  .ucs-btn { display: block; width: 100%; text-align: left; margin: 0 0 6px 0; }
   .axis-btns { display: flex; gap: 6px; }
-  .axis-btns button { margin: 0 0 6px 0; }
-  .axis-btns button:first-child { flex: 1; }
+  .axis-btns button { margin: 0 0 6px 0; flex: 1; }
   .angle-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
   .angle-row input { width: 100px; font-family: var(--font); font-size: 12px; padding: 5px 6px; border: 1px solid #bdbdbd; border-radius: 4px; text-align: right; }
   .muted { color: #757575; font-size: 11px; }
@@ -114,18 +113,15 @@
   <h2>Options</h2>
   <button id="tglContinuous" class="primary tgl on" aria-pressed="true">Continuous measuring</button>
   <button id="tglComponents" class="primary tgl on" aria-pressed="true">Draw X Y Z components</button>
-  <button id="tglLabels" class="primary tgl" aria-pressed="false">Permanent value labels</button>
-  <button id="tglMeters" class="primary tgl" aria-pressed="false">Units in meters (default mm)</button>
+  <button id="tglLabels" class="primary tgl" aria-pressed="false" style="display:none">Permanent value labels</button>
+  <button id="tglMeters" class="primary tgl" aria-pressed="false" style="display:none">Units in meters (default mm)</button>
 
-  <h2>Local axes</h2>
-  <div class="lock-row mode-row">
-    <button id="mode2D" class="primary tgl on" aria-pressed="true" disabled title="Z stays vertical – axes from 2 points or an angle (walls, facades)">2D – Z vertical</button>
-    <button id="mode3D" class="primary tgl" aria-pressed="false" disabled title="Tilted axes from 3 points (inclined beams, sloped surfaces)">3D – tilted</button>
-  </div>
+  <h2>User defined coordinate system</h2>
+  <button id="btnUcs2" class="primary ucs-btn" disabled title="Z stays vertical: pick the origin, then a point along the wall – that direction becomes X′">📐 Set UCS by 2 points</button>
+  <button id="btnUcs3" class="primary ucs-btn" disabled title="Tilted UCS: pick the origin, a point along X′ (e.g. along the beam) and a third point in the X′Y′ plane">📐 Set UCS by 3 points</button>
   <div class="axis-btns">
-    <button id="btnAxisDefine" class="primary" disabled title="Pick the origin, then a second point along the wall – that direction becomes X'">📏 Define axes (2 points)</button>
-    <button id="btnAxisRot" disabled title="Rotate the local axes by +90° (swap which wall is X')">↻ 90°</button>
-    <button id="btnAxisClear" disabled title="Delete the local axes completely and go back to global X / Y">🗑 Axes</button>
+    <button id="btnAxisRot" disabled title="Rotate the UCS by +90° (swap X′ and Y′)">↻ 90°</button>
+    <button id="btnAxisClear" disabled title="Delete the UCS completely and go back to global X / Y / Z">🗑 Clear UCS</button>
   </div>
   <div class="angle-row" id="angleRow">
     <label for="axisAngle">X' angle</label>
@@ -133,9 +129,9 @@
     <span>°</span>
     <span id="axisGon" class="muted"></span>
   </div>
-  <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Measure in local axes X' Y'</button>
+  <button id="tglLocal" class="primary tgl" aria-pressed="false" disabled>Measure in UCS</button>
   <button id="tglShowAxes" class="primary tgl on" aria-pressed="true">Show axes &amp; frame in model</button>
-  <div id="axisInfo" class="axis-info">No local axes – measuring in global X / Y.</div>
+  <div id="axisInfo" class="axis-info">No UCS – measuring in global X / Y / Z.</div>
 
   <h2>Coordinate lock</h2>
   <div class="lock-row">
@@ -175,13 +171,14 @@ import * as TCW from "https://esm.run/trimble-connect-workspace-api@0.3.34";
      ToolOptions = { snapTypes: string[], instruction: {title,text} }
    ============================================================ */
 const SETTINGS = {
-  COLOR_X:      { r: 211, g: 47,  b: 47,  a: 255 },  // red
-  COLOR_Y:      { r: 46,  g: 125, b: 50,  a: 255 },  // green
-  COLOR_Z:      { r: 21,  g: 101, b: 192, a: 255 },  // blue
+  // axis colours match the Viewer's axis gizmo (bottom right)
+  COLOR_X:      { r: 250, g: 102, b: 123, a: 255 },  // red   - X
+  COLOR_Y:      { r: 173, g: 226, b: 84,  a: 255 },  // green - Y
+  COLOR_Z:      { r: 44,  g: 143, b: 255, a: 255 },  // blue  - Z
   COLOR_MAIN:   null,            // null = Viewer default colour
-  COLOR_AXIS_X: { r: 255, g: 111, b: 0,   a: 255 },  // orange - local X' axis
-  COLOR_AXIS_Y: { r: 142, g: 36,  b: 170, a: 255 },  // purple - local Y' axis
-  COLOR_AXIS_Z: { r: 0,   g: 151, b: 167, a: 255 },  // teal   - local Z' axis (3D mode)
+  COLOR_AXIS_X: { r: 250, g: 102, b: 123, a: 255 },  // UCS X' axis (gizmo red)
+  COLOR_AXIS_Y: { r: 173, g: 226, b: 84,  a: 255 },  // UCS Y' axis (gizmo green)
+  COLOR_AXIS_Z: { r: 44,  g: 143, b: 255, a: 255 },  // UCS Z' axis (gizmo blue)
   AXIS_Z_RATIO: 0.5,             // drawn Z' axis length relative to X'/Y' (3D mode)
   PICK_TO_MM:   1000,            // pick event (m) -> mm
   MIN_COMPONENT_MM: 0.5,         // shorter components are not drawn
@@ -215,6 +212,7 @@ let knownPointIds = new Set();
 // picked points – differences don't depend on it.
 let axisPicking = false;
 let axisPts = [];                // points picked so far while defining axes
+let axisPickMode = "2d";         // which "Set UCS" button is picking: "2d" (2 points) or "3d" (3 points)
 let showAxesPref = true;         // what the user chose; the button shows OFF while axes can't be shown
 const AXIS = {
   defined: false, mode: "2d", theta: 0,
@@ -266,7 +264,6 @@ async function connect() {
     $("btnMeasure").disabled = false;
     $("btnClear").disabled = false;
     $("btnCopy").disabled = false;
-    $("btnAxisDefine").disabled = false;
     updateAxisUI();
   } catch (e) {
     setStatus("Could not connect to the 3D Viewer: " + e.message, "error");
@@ -349,7 +346,7 @@ async function startMeasuring() {
   firstPoint = null;
   setToggle("btnMeasure", true);
   $("btnMeasure").textContent = "⏹ Stop measuring";
-  setStatus("Measuring" + (localActive() ? " in local axes" : "") + " – pick the FIRST point in the model.", "active");
+  setStatus("Measuring" + (localActive() ? " in UCS" : "") + " – pick the FIRST point in the model.", "active");
 }
 
 async function stopMeasuring(text) {
@@ -469,27 +466,25 @@ function updateAxisUI() {
   const is3D = AXIS.mode === "3d";
   const deg = thetaDeg();
 
-  setToggle("mode2D", !is3D);
-  setToggle("mode3D", is3D);
-  $("mode2D").disabled = !api;
-  $("mode3D").disabled = !api;
-
-  if (!axisPicking) $("btnAxisDefine").textContent = "📏 Define axes (" + (is3D ? "3" : "2") + " points)";
-  $("btnAxisDefine").title = is3D
-    ? "Pick the origin, a point along X′ (e.g. along the beam) and a third point in the X′Y′ plane"
-    : "Pick the origin, then a second point along the wall – that direction becomes X′";
+  // "Set UCS" buttons start picking directly; the active one turns into Cancel
+  for (const [id, mode, n] of [["btnUcs2", "2d", 2], ["btnUcs3", "3d", 3]]) {
+    const active = axisPicking && axisPickMode === mode;
+    setToggle(id, active);
+    $(id).textContent = active ? "✕ Cancel" : "📐 Set UCS by " + n + " points";
+    $(id).disabled = !api;
+  }
 
   // the plan angle only applies to 2D axes
-  $("angleRow").style.display = is3D ? "none" : "";
+  $("angleRow").style.display = AXIS.defined && is3D ? "none" : "";
   if (document.activeElement !== $("axisAngle")) $("axisAngle").value = deg.toFixed(4);
   $("axisGon").textContent = AXIS.defined ? "(" + (deg * 400 / 360).toFixed(4) + " gon)" : "";
   $("axisAngle").disabled = !api;
 
   $("btnAxisRot").disabled = !AXIS.defined || !api;
-  $("btnAxisRot").title = "Rotate the local axes by +90° around " + (is3D ? "Z′" : "Z") + " (swap X′ and Y′)";
+  $("btnAxisRot").title = "Rotate the UCS by +90° around " + (is3D ? "Z′" : "Z") + " (swap X′ and Y′)";
   $("btnAxisClear").disabled = (!AXIS.defined && !axisPicking) || !api;
   $("tglLocal").disabled = !AXIS.defined;
-  $("tglLocal").textContent = "Measure in local axes " + (is3D ? "X′ Y′ Z′" : "X′ Y′");
+  $("tglLocal").textContent = "Measure in UCS";
 
   // "Show axes" only makes sense while local axes are on and have an origin;
   // otherwise show it OFF and disabled, and restore the user's choice later
@@ -511,9 +506,8 @@ function updateAxisUI() {
   $("th2D").textContent = local ? "2D (X′Y′)" : "2D (XY)";
 
   let info;
-  if (!AXIS.defined) info = "No local axes – measuring in global X / Y / Z." +
-                            (is3D ? " Define axes picks 3 points (tilted axes)." : "");
-  else if (!local) info = "Local axes defined (" + axesDesc() + ") but switched off – measuring in global X / Y / Z.";
+  if (!AXIS.defined) info = "No UCS – measuring in global X / Y / Z.";
+  else if (!local) info = "UCS defined (" + axesDesc() + ") but switched off – measuring in global X / Y / Z.";
   else info = "Measuring along " + (is3D ? "X′ / Y′ / Z′" : "X′ / Y′") + " (" + axesDesc() + ")." +
               (AXIS.origin ? "" : " No origin set – axes are not drawn.");
   $("axisInfo").textContent = info;
@@ -529,26 +523,26 @@ async function drawAxes() {
 
   const S = SETTINGS, O = AXIS.origin, L = AXIS.len;
   const is3D = AXIS.mode === "3d";
-  const EX = vAdd(O, vScale(AXIS.ex, L));
-  const EY = vAdd(O, vScale(AXIS.ey, L));
-  const EZ = vAdd(O, vScale(AXIS.ez, L * S.AXIS_Z_RATIO));
-  try {
-    const dims = [ dimension(O, EX, S.COLOR_AXIS_X), dimension(O, EY, S.COLOR_AXIS_Y) ];
-    if (is3D) dims.push(dimension(O, EZ, S.COLOR_AXIS_Z));
-    const res = await api.markup.addMeasurementMarkups(dims);
-    (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
-  } catch (e) {
-    const note = "Could not draw the axes: " + (e && e.message ? e.message : String(e));
-    setStatus(note, "error");
-    return note;
+  const axes = [["X′", AXIS.ex, L, S.COLOR_AXIS_X], ["Y′", AXIS.ey, L, S.COLOR_AXIS_Y]];
+  if (is3D) axes.push(["Z′", AXIS.ez, L * S.AXIS_Z_RATIO, S.COLOR_AXIS_Z]);
+
+  // plain coloured lines, the same look as the Viewer's axis gizmo
+  for (const [, dir, len, color] of axes) {
+    const r = await addLines([[O, vAdd(O, vScale(dir, len))]], color);
+    AXIS.markupIds.push(...r.ids);
+    if (!r.ids.length) {
+      const note = "Could not draw the axes (" + r.errors.join("; ") + ").";
+      setStatus(note, "error");
+      return note;
+    }
   }
+  // the label sits just past the tip, on a short leader continuing the axis
   try {
-    const up = p => ({ x: p.x, y: p.y, z: p.z + S.LABEL_OFFSET_MM });
-    const texts = [
-      { start: pickMM(EX), end: pickMM(up(EX)), text: "X′", color: S.COLOR_AXIS_X },
-      { start: pickMM(EY), end: pickMM(up(EY)), text: "Y′", color: S.COLOR_AXIS_Y }
-    ];
-    if (is3D) texts.push({ start: pickMM(EZ), end: pickMM(up(EZ)), text: "Z′", color: S.COLOR_AXIS_Z });
+    const gap = Math.max(L * 0.04, S.LABEL_OFFSET_MM * 2);
+    const texts = axes.map(([text, dir, len, color]) => {
+      const tip = vAdd(O, vScale(dir, len));
+      return { start: pickMM(tip), end: pickMM(vAdd(tip, vScale(dir, gap))), text, color };
+    });
     const res = await api.markup.addTextMarkup(texts);
     (res || []).forEach(m => { if (m.id !== undefined) AXIS.markupIds.push(m.id); });
   } catch (e) { console.log("Axis label error:", e && e.message); }
@@ -559,38 +553,39 @@ async function drawAxes() {
   return note;
 }
 
-// Tries several markup types in turn, because not every Viewer build supports
-// every one of them. Returns an error text for the status box, or "" when drawn.
-async function drawFrame(O, L) {
-  const S = SETTINGS;
-  const size = Math.max(L, S.MIN_FRAME_MM);
-  const lo = -size * S.FRAME_MARGIN, hi = size * (1 + S.FRAME_MARGIN);
-  const at = (u, v) => vAdd(O, vAdd(vScale(AXIS.ex, u), vScale(AXIS.ey, v)));
-  const corners = [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi)];
-  const edges = corners.map((p, i) => [p, corners[(i + 1) % 4]]);
-  const seg = ([a, b]) => ({ start: pickMM(a), end: pickMM(b), color: S.COLOR_FRAME });
-
+// Draws straight segments [[a,b], ...]. Tries several markup types in turn, because
+// not every Viewer build supports every one of them. Returns {ids, errors}.
+async function addLines(edges, color) {
+  const seg = ([a, b]) => ({ start: pickMM(a), end: pickMM(b), color });
   const attempts = [
     ["line",     () => api.markup.addLineMarkups(edges.map(seg))],
-    ["freeline", () => api.markup.addFreelineMarkups([{ color: S.COLOR_FRAME, lines: edges.map(seg) }])],
-    ["dimension",() => api.markup.addMeasurementMarkups(edges.map(([a, b]) => dimension(a, b, S.COLOR_FRAME)))]
+    ["freeline", () => api.markup.addFreelineMarkups([{ color, lines: edges.map(seg) }])],
+    ["dimension",() => api.markup.addMeasurementMarkups(edges.map(([a, b]) => dimension(a, b, color)))]
   ];
   const errors = [];
   for (const [name, run] of attempts) {
     try {
       const res = await run();
       const ids = (res || []).map(m => m && m.id).filter(id => id !== undefined);
-      if (ids.length) {
-        AXIS.markupIds.push(...ids);
-        console.log("Axis frame drawn as", name, "markups");
-        return "";
-      }
+      if (ids.length) return { ids, errors };
       errors.push(name + ": nothing returned");
     } catch (e) {
       errors.push(name + ": " + (e && e.message ? e.message : String(e)));
     }
   }
-  return "Frame could not be drawn (" + errors.join("; ") + ").";
+  return { ids: [], errors };
+}
+
+// frame in the X′Y′ plane; returns an error text for the status box, or "" when drawn
+async function drawFrame(O, L) {
+  const S = SETTINGS;
+  const size = Math.max(L, S.MIN_FRAME_MM);
+  const lo = -size * S.FRAME_MARGIN, hi = size * (1 + S.FRAME_MARGIN);
+  const at = (u, v) => vAdd(O, vAdd(vScale(AXIS.ex, u), vScale(AXIS.ey, v)));
+  const corners = [at(lo, lo), at(hi, lo), at(hi, hi), at(lo, hi)];
+  const r = await addLines(corners.map((p, i) => [p, corners[(i + 1) % 4]]), S.COLOR_FRAME);
+  AXIS.markupIds.push(...r.ids);
+  return r.ids.length ? "" : "Frame could not be drawn (" + r.errors.join("; ") + ").";
 }
 
 async function axisChanged(msg) {
@@ -605,31 +600,30 @@ async function axisChanged(msg) {
    LOCAL AXES – defining them by picking points
    ============================================================ */
 function axisPickPrompt() {
-  const is3D = AXIS.mode === "3d";
-  if (axisPts.length === 0) return "Axes – pick the ORIGIN (e.g. a building corner or the start of the beam).";
+  const is3D = axisPickMode === "3d";
+  if (axisPts.length === 0) return "UCS – pick the ORIGIN (e.g. a building corner or the start of the beam).";
   if (axisPts.length === 1) return "Origin: " + fmtPoint(axisPts[0]) + " – pick a point ALONG the X′ direction" +
                                    (is3D ? " (e.g. along the beam)." : " (along the wall).");
   return "X′ set – pick a THIRD point in the X′Y′ plane, off the X′ line (e.g. across the top of the beam).";
 }
 
 async function activateAxisTool() {
-  const text = AXIS.mode === "3d"
+  const text = axisPickMode === "3d"
     ? "Pick the origin, a point along X′ and a point in the X′Y′ plane"
     : "Pick the origin, then a point along X′";
-  return activateTool("Define local axes", text);
+  return activateTool("Set UCS", text);
 }
 
-async function startAxisPicking() {
+async function startAxisPicking(mode) {
   if (measuring) await stopMeasuring();
   await rememberPointMarkups();
+  axisPickMode = mode;
   axisPts = [];
   axisPicking = true;
   if (!await activateAxisTool()) {
     axisPicking = false;
     return;
   }
-  setToggle("btnAxisDefine", true);
-  $("btnAxisDefine").textContent = "✕ Cancel";
   updateAxisUI();
   setStatus(axisPickPrompt(), "active");
 }
@@ -637,22 +631,28 @@ async function startAxisPicking() {
 async function finishAxisPicking() {
   axisPicking = false;
   axisPts = [];
-  setToggle("btnAxisDefine", false);
   updateAxisUI();
   await resetTool();
   await removeNewPointLabels();
 }
 
-$("btnAxisDefine").onclick = async () => {
-  if (axisPicking) { await finishAxisPicking(); setStatus("Axis definition cancelled."); }
-  else await startAxisPicking();
-};
+// clicking the active button again cancels; clicking the other one switches the method
+async function onUcsButton(mode) {
+  if (axisPicking) {
+    const same = mode === axisPickMode;
+    await finishAxisPicking();
+    if (same) { setStatus("UCS definition cancelled."); return; }
+  }
+  await startAxisPicking(mode);
+}
+$("btnUcs2").onclick = () => onUcsButton("2d");
+$("btnUcs3").onclick = () => onUcsButton("3d");
 
 async function handleAxisPick(args) {
   const p = extractPoint(args);
   if (!p) return;
   const S = SETTINGS;
-  const is3D = AXIS.mode === "3d";
+  const is3D = axisPickMode === "3d";
 
   if (axisPts.length === 0) {
     axisPts.push(p);
@@ -697,40 +697,16 @@ async function handleAxisPick(args) {
 }
 
 async function setAxes(origin, length) {
+  AXIS.mode = axisPickMode;
   AXIS.defined = true;
   AXIS.origin = origin;
   AXIS.len = Math.max(length, SETTINGS.MIN_AXIS_DRAW_MM);
   setToggle("tglLocal", true);
   await finishAxisPicking();
-  await axisChanged("Local axes set (" + axesDesc() + "). Measurements now use " +
+  await axisChanged("UCS set (" + axesDesc() + "). Measurements now use " +
                     (AXIS.mode === "3d" ? "X′ / Y′ / Z′." : "X′ / Y′."));
 }
 
-// switching 2D <-> 3D: 3D axes are flattened to their plan direction,
-// 2D axes are kept as they are (they are valid 3D axes with a vertical Z′)
-async function setMode(mode) {
-  if (mode === AXIS.mode) return;
-  AXIS.mode = mode;
-  let msg = mode === "3d"
-    ? "3D mode – Define axes now picks 3 points (origin, along X′, in the X′Y′ plane)."
-    : "2D mode – Z stays vertical, Define axes picks 2 points.";
-  if (AXIS.defined && mode === "2d") {
-    AXIS.theta = planAngleOf(AXIS.ex, AXIS.ey);
-    basisFromTheta();
-    msg += " The tilted axes were flattened to X′ at " + thetaDeg().toFixed(4) + "°.";
-  }
-  if (axisPicking) {
-    axisPts = [];
-    await activateAxisTool();
-    await axisChanged();
-    setStatus(msg + " " + axisPickPrompt(), "active");
-    return;
-  }
-  if (measuring) firstPoint = null;     // an unfinished pick would mix two axis systems
-  await axisChanged(msg);
-}
-$("mode2D").onclick = () => setMode("2d");
-$("mode3D").onclick = () => setMode("3d");
 
 $("btnAxisRot").onclick = () => {
   // +90° around Z′: X′ -> Y′, Y′ -> -X′
@@ -756,8 +732,8 @@ $("btnAxisClear").onclick = async () => {
   updateAxisUI();
   renderTable();
   await drawAxes();                     // removes the drawn axes, draws nothing new
-  setStatus("Local axes deleted – measuring in global X / Y / Z." +
-            (measuring ? " Pick the FIRST point." : " Click Define axes to set new ones."),
+  setStatus("UCS cleared – measuring in global X / Y / Z." +
+            (measuring ? " Pick the FIRST point." : " Use Set UCS to define a new one."),
             measuring ? "active" : "");
 };
 
@@ -964,7 +940,7 @@ function renderTable() {
   for (const m of measurements) {
     const tr = document.createElement("tr");
     const tag = m.local
-      ? "<sup title='Local axes: " + m.axesDesc + "'>" + (m.mode3d ? "3D" : "L") + "</sup>"
+      ? "<sup title='UCS: " + m.axesDesc + "'>" + (m.mode3d ? "3D" : "L") + "</sup>"
       : "";
     tr.innerHTML =
       "<td>" + m.num + tag + "</td>" +
@@ -1000,7 +976,7 @@ $("btnCopy").onclick = () => {
   const u = isOn("tglMeters") ? "m" : "mm";
   let text = "#\tAxes\t|dX| [" + u + "]\t|dY| [" + u + "]\t|dZ| [" + u + "]\t3D [" + u + "]\t2D [" + u + "]\n";
   for (const m of measurements) {
-    const axes = m.local ? "local " + m.axesDesc : "global";
+    const axes = m.local ? "UCS " + m.axesDesc : "global";
     text += [m.num, axes, fmt(Math.abs(m.du)), fmt(Math.abs(m.dv)),
              fmt(Math.abs(m.dz)), fmt(m.d3), fmt(m.d2)].join("\t") + "\n";
   }
